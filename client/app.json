@@ -1,0 +1,18 @@
+{
+  "expo": {
+    "name": "superapp",
+    "slug": "superapp",
+    "version": "1.0.0",
+    "platforms": ["ios", "android", "web"],
+    "extra": {
+      "SERVER_URL": "http://192.168.1.196:3000"
+    },
+    "ios": {
+      "infoPlist": {
+        "NSCameraUsageDescription": "We need your camera to let you send photos.",
+        "NSPhotoLibraryUsageDescription": "We need your photo library to let you select images.",
+        "NSMicrophoneUsageDescription": "We need your microphone to let you record audio messages."
+      }
+    }
+  }
+}
