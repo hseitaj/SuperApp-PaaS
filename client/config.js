@@ -1,4 +1,7 @@
-// superapp-paas/client/config.js
+// client/config.js
 import Constants from "expo-constants";
-export const SERVER_URL =
-  Constants.expoConfig?.extra?.SERVER_URL || "http://192.168.1.196:3000";
+
+const { expoConfig, manifest } = Constants;
+const extra = expoConfig?.extra ?? manifest?.extra ?? {};
+
+export const SERVER_URL = extra.SERVER_URL;
