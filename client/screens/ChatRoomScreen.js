@@ -1,12 +1,12 @@
-// superapp-paas/client/screens/ChatRoomScreen.js
-import React, { useState, useEffect, useRef } from "react";
+// client/screens/ChatRoomScreen.js
+import React, { useEffect, useState, useRef } from "react";
 import {
   SafeAreaView,
   View,
   FlatList,
+  Text,
   TextInput,
   TouchableOpacity,
-  Text,
   Image,
   StyleSheet,
   KeyboardAvoidingView,
@@ -16,97 +16,128 @@ import axios from "axios";
 import io from "socket.io-client";
 import * as ImagePicker from "expo-image-picker";
 import { Audio } from "expo-av";
-import * as Notifications from "expo-notifications";
 import { SERVER_URL } from "../config";
 
 export default function ChatRoomScreen({ route, navigation }) {
-  const { user, room } = route.params;
+  /* ───────── params ───────── */
+  const { user, room, friendName = "Chat" } = route.params;
+
+  /* ───────── state ───────── */
+  const [socket, setSocket] = useState(null);
   const [chats, setChats] = useState([]);
-  const [message, setMessage] = useState("");
-  const [recording, setRecording] = useState(null);
-  const socketRef = useRef();
+  const [text, setText] = useState("");
+  const flatRef = useRef(null);
+  const recordingRef = useRef(null);
 
+  /* ───────── header title ───────── */
   useEffect(() => {
-    navigation.setOptions({ headerShown: true, title: `Chat: ${room}` });
+    navigation.setOptions({ title: friendName });
+  }, [friendName, navigation]);
 
-    Notifications.requestPermissionsAsync();
-    Notifications.setNotificationHandler({
-      handleNotification: async () => ({ shouldShowAlert: true }),
-    });
+  /* ───────── connect & history ───────── */
+  useEffect(() => {
+    let alive = true;
 
-    axios
-      .get(`${SERVER_URL}/messages/${room}`)
-      .then((r) => setChats(r.data))
-      .catch(console.error);
+    (async () => {
+      try {
+        const { data } = await axios.get(`${SERVER_URL}/messages/${room}`);
+        if (alive) setChats(data);
+      } catch (e) {
+        console.warn("History load failed:", e.message);
+      }
+    })();
 
-    const socket = io(SERVER_URL, { transports: ["websocket"] });
-    socketRef.current = socket;
-    socket.emit("join", room);
-    socket.on("message", (msg) => {
-      setChats((prev) =>
-        prev.find((m) => m.id === msg.id) ? prev : [...prev, msg]
-      );
-      Notifications.scheduleNotificationAsync({
-        content: {
-          title: `New from ${msg.sender}`,
-          body: msg.type === "text" ? msg.content : msg.type,
-        },
-        trigger: null,
-      });
-    });
+    const s = io(SERVER_URL, { transports: ["websocket"] });
+    s.emit("join", room);
+    s.on("message", (m) => setChats((p) => [...p, m]));
+    setSocket(s);
+
     return () => {
-      socket.disconnect();
-      recording?.stopAndUnloadAsync();
+      alive = false;
+      s.disconnect();
     };
-  }, []);
+  }, [room]);
 
-  const sendMessage = (content, type = "text") => {
-    const payload = { sender: user.username, receiver: room, content, type };
-    socketRef.current.emit("message", payload);
-    setChats((prev) => [...prev, { id: Date.now().toString(), ...payload }]);
+  /* ───────── helpers ───────── */
+  const scrollToEnd = () => flatRef.current?.scrollToEnd({ animated: true });
+
+  const send = (content, type = "text") => {
+    if (!socket) return;
+    const msg = {
+      sender: user.username,
+      receiver: room,
+      content,
+      type,
+    };
+    socket.emit("message", msg);
+    setChats((p) => [...p, msg]);
+    scrollToEnd();
+  };
+
+  /* ───────── UI actions ───────── */
+  const handleSendText = () => {
+    if (!text.trim()) return;
+    send(text.trim());
+    setText("");
   };
 
   const pickImage = async () => {
-    const { assets } = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaType.All,
-    });
-    if (!assets?.length) return;
-    const uri = assets[0].uri;
-    const form = new FormData();
-    form.append("file", { uri, name: "upload.jpg", type: "image/jpeg" });
-    const { data } = await axios.post(`${SERVER_URL}/upload`, form, {
-      headers: { "Content-Type": "multipart/form-data" },
-    });
-    sendMessage(data.url, "image");
+    try {
+      const res = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.7,
+      });
+      if (!res.assets?.length) return;
+      const uri = res.assets[0].uri;
+      // 🔒 Snack can’t POST files to your server; on device this works.
+      const form = new FormData();
+      form.append("file", { uri, name: "img.jpg", type: "image/jpeg" });
+      const { data } = await axios.post(`${SERVER_URL}/upload`, form, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      send(data.url, "image");
+    } catch (e) {
+      console.warn("Image pick failed:", e.message);
+    }
   };
 
-  const toggleRecording = async () => {
-    if (!recording) {
+  const toggleAudio = async () => {
+    if (!recordingRef.current) {
       await Audio.requestPermissionsAsync();
-      const { recording: rec } = await Audio.Recording.createAsync(
+      const { recording } = await Audio.Recording.createAsync(
         Audio.RECORDING_OPTIONS_PRESET_HIGH_QUALITY
       );
-      setRecording(rec);
+      recordingRef.current = recording;
     } else {
-      await recording.stopAndUnloadAsync();
-      const uri = recording.getURI();
+      await recordingRef.current.stopAndUnloadAsync();
+      const uri = recordingRef.current.getURI();
+      recordingRef.current = null;
       const form = new FormData();
       form.append("file", { uri, name: "audio.m4a", type: "audio/m4a" });
       const { data } = await axios.post(`${SERVER_URL}/upload`, form, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-      sendMessage(data.url, "audio");
-      setRecording(null);
+      send(data.url, "audio");
     }
   };
 
+  /* ───────── renderers ───────── */
   const renderItem = ({ item }) => {
+    const mine = item.sender === user.username;
+    const wrap = [styles.bubble, mine ? styles.mine : styles.theirs];
+
     if (item.type === "image") {
-      return <Image source={{ uri: item.content }} style={styles.media} />;
+      return (
+        <View style={wrap}>
+          <Image source={{ uri: item.content }} style={styles.image} />
+        </View>
+      );
     }
+
     if (item.type === "audio") {
       return (
         <TouchableOpacity
+          style={wrap}
           onPress={async () => {
             const { sound } = await Audio.Sound.createAsync({
               uri: item.content,
@@ -114,79 +145,102 @@ export default function ChatRoomScreen({ route, navigation }) {
             await sound.playAsync();
           }}
         >
-          <Text style={styles.audio}>🔊 Play Audio</Text>
+          <Text style={styles.audio}>🔊 Play audio</Text>
         </TouchableOpacity>
       );
     }
+
     return (
-      <Text style={styles.text}>
-        <Text style={styles.bold}>{item.sender}: </Text>
-        {item.content}
-      </Text>
+      <View style={wrap}>
+        <Text style={styles.text}>{item.content}</Text>
+      </View>
     );
   };
 
+  /* ───────── component ───────── */
   return (
-    <SafeAreaView style={styles.container}>
-      <FlatList
-        data={chats}
-        keyExtractor={(c) => c.id}
-        renderItem={renderItem}
-        contentContainerStyle={styles.chatList}
-      />
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        style={styles.inputRow}
-      >
-        <TextInput
-          style={styles.input}
-          placeholder="Message…"
-          placeholderTextColor="#666"
-          value={message}
-          onChangeText={setMessage}
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      keyboardVerticalOffset={80}
+    >
+      <SafeAreaView style={styles.container}>
+        <FlatList
+          ref={flatRef}
+          data={chats}
+          renderItem={renderItem}
+          keyExtractor={(_, i) => String(i)}
+          onContentSizeChange={scrollToEnd}
+          contentContainerStyle={{ padding: 8 }}
         />
-        <TouchableOpacity
-          style={styles.iconButton}
-          onPress={() => {
-            sendMessage(message);
-            setMessage("");
-          }}
-        >
-          <Text>🗨️</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.iconButton} onPress={pickImage}>
-          <Text>📷</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.iconButton} onPress={toggleRecording}>
-          <Text>{recording ? "⏹️" : "🎤"}</Text>
-        </TouchableOpacity>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+
+        {/* input bar */}
+        <View style={styles.bar}>
+          <TouchableOpacity onPress={pickImage} style={styles.barBtn}>
+            <Text>📷</Text>
+          </TouchableOpacity>
+
+          <TextInput
+            style={styles.input}
+            placeholder="Message…"
+            value={text}
+            onChangeText={setText}
+            onSubmitEditing={handleSendText}
+            returnKeyType="send"
+          />
+
+          <TouchableOpacity onPress={toggleAudio} style={styles.barBtn}>
+            <Text>🎤</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity onPress={handleSendText} style={styles.sendBtn}>
+            <Text style={{ color: "#fff", fontWeight: "600" }}>Send</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    </KeyboardAvoidingView>
   );
 }
 
+/* ───────── styles ───────── */
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  chatList: { padding: 16 },
-  text: { marginBottom: 8 },
-  bold: { fontWeight: "600" },
-  media: { width: 200, height: 200, marginBottom: 8 },
-  audio: { color: "#0066CC", marginBottom: 8 },
-  inputRow: {
+  /* bubbles */
+  bubble: {
+    maxWidth: "80%",
+    padding: 10,
+    borderRadius: 8,
+    marginVertical: 4,
+  },
+  mine: { alignSelf: "flex-end", backgroundColor: "#0066CC" },
+  theirs: { alignSelf: "flex-start", backgroundColor: "#eee" },
+  text: { color: "#000" },
+  image: { width: 180, height: 180, borderRadius: 8 },
+  audio: { color: "#0066CC", fontWeight: "600" },
+  /* bar */
+  bar: {
     flexDirection: "row",
     alignItems: "center",
-    padding: 8,
+    padding: 6,
     borderTopWidth: 1,
-    borderColor: "#eee",
+    borderColor: "#ddd",
+    backgroundColor: "#fafafa",
   },
   input: {
     flex: 1,
+    backgroundColor: "#fff",
     borderWidth: 1,
     borderColor: "#ccc",
     borderRadius: 20,
     paddingHorizontal: 12,
-    paddingVertical: 8,
-    marginRight: 8,
+    paddingVertical: 6,
+    marginHorizontal: 6,
   },
-  iconButton: { padding: 8 },
+  barBtn: { padding: 6 },
+  sendBtn: {
+    backgroundColor: "#0066CC",
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
 });

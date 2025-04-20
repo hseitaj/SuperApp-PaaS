@@ -1,5 +1,4 @@
 // client/screens/RegisterScreen.js
-
 import React, { useState } from "react";
 import {
   SafeAreaView,
@@ -20,26 +19,23 @@ export default function RegisterScreen({ navigation }) {
   const [password, setPassword] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
 
-  const register = async () => {
+  const signup = async () => {
     setErrorMsg("");
     if (username.trim().length < 3) {
-      return setErrorMsg("Username must be ≥3 chars.");
+      return setErrorMsg("Username must be ≥ 3 chars");
     }
     if (password.length < 4) {
-      return setErrorMsg("Password must be ≥4 chars.");
+      return setErrorMsg("Password must be ≥ 4 chars");
     }
-
     try {
-      const res = await axios.post(
+      await axios.post(
         `${SERVER_URL}/signup`,
         { username: username.trim(), password },
         { headers: { "Content-Type": "application/json" } }
       );
-      // on success, immediately log in
-      navigation.replace("ChatList", { user: res.data });
+      alert("Account created — please log in");
+      navigation.goBack();
     } catch (e) {
-      console.error("Register error payload:", e.response?.data || e.message);
-      // if no response at all, show Server unreachable
       const msg =
         e.response?.data?.error ||
         (e.request && "Server unreachable") ||
@@ -55,7 +51,7 @@ export default function RegisterScreen({ navigation }) {
     >
       <SafeAreaView style={styles.container}>
         <View style={styles.card}>
-          {/* same logo at top */}
+          {/*  👇 same logo used in Login  */}
           <Image
             source={require("../assets/logo.png")}
             style={styles.logo}
@@ -63,9 +59,9 @@ export default function RegisterScreen({ navigation }) {
           />
 
           <TextInput
-            style={styles.input}
-            placeholder="Username"
+            placeholder="Choose a username"
             autoCapitalize="none"
+            style={styles.input}
             value={username}
             onChangeText={(t) => {
               setUsername(t);
@@ -73,9 +69,9 @@ export default function RegisterScreen({ navigation }) {
             }}
           />
           <TextInput
-            style={styles.input}
-            placeholder="Password"
+            placeholder="Create a password"
             secureTextEntry
+            style={styles.input}
             value={password}
             onChangeText={(t) => {
               setPassword(t);
@@ -85,12 +81,14 @@ export default function RegisterScreen({ navigation }) {
 
           {errorMsg ? <Text style={styles.error}>{errorMsg}</Text> : null}
 
-          <TouchableOpacity style={styles.button} onPress={register}>
-            <Text style={styles.buttonText}>Register</Text>
+          <TouchableOpacity style={styles.button} onPress={signup}>
+            <Text style={styles.buttonText}>Create Account</Text>
           </TouchableOpacity>
 
           <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Text style={styles.linkText}>Have an account? Login</Text>
+            <Text style={styles.linkText}>
+              ← Already have an account? Log in
+            </Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -127,11 +125,7 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     backgroundColor: "#fafafa",
   },
-  error: {
-    color: "red",
-    marginBottom: 12,
-    textAlign: "center",
-  },
+  error: { color: "red", marginBottom: 12, textAlign: "center" },
   button: {
     backgroundColor: "#0066CC",
     padding: 14,

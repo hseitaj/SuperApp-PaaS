@@ -5,7 +5,7 @@
     "version": "1.0.0",
     "platforms": ["ios", "android", "web"],
     "extra": {
-      "SERVER_URL": "https://my-public-mock-api.com"
+      "SERVER_URL": "https://superapp-paas.onrender.com"
     }
   }
 }
