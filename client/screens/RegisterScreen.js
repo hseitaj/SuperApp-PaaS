@@ -1,8 +1,10 @@
-// superapp-paas/client/screens/RegisterScreen.js
+// client/screens/RegisterScreen.js
+
 import React, { useState } from "react";
 import {
   SafeAreaView,
   View,
+  Image,
   TextInput,
   TouchableOpacity,
   Text,
@@ -18,11 +20,14 @@ export default function RegisterScreen({ navigation }) {
   const [password, setPassword] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
 
-  const signup = async () => {
+  const register = async () => {
     setErrorMsg("");
-    if (username.trim().length < 3)
+    if (username.trim().length < 3) {
       return setErrorMsg("Username must be ≥3 chars.");
-    if (password.length < 4) return setErrorMsg("Password must be ≥4 chars.");
+    }
+    if (password.length < 4) {
+      return setErrorMsg("Password must be ≥4 chars.");
+    }
 
     try {
       const res = await axios.post(
@@ -30,51 +35,62 @@ export default function RegisterScreen({ navigation }) {
         { username: username.trim(), password },
         { headers: { "Content-Type": "application/json" } }
       );
+      // on success, immediately log in
       navigation.replace("ChatList", { user: res.data });
     } catch (e) {
-      console.error("Signup error:", e.response?.data || e.message);
-      setErrorMsg(
+      console.error("Register error payload:", e.response?.data || e.message);
+      // if no response at all, show Server unreachable
+      const msg =
         e.response?.data?.error ||
-          (e.request ? "Server unreachable" : e.message)
-      );
+        (e.request && "Server unreachable") ||
+        e.message;
+      setErrorMsg(msg);
     }
   };
 
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1 }}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
+      style={{ flex: 1 }}
     >
       <SafeAreaView style={styles.container}>
         <View style={styles.card}>
+          {/* same logo at top */}
+          <Image
+            source={require("../assets/logo.png")}
+            style={styles.logo}
+            resizeMode="contain"
+          />
+
           <TextInput
             style={styles.input}
             placeholder="Username"
-            placeholderTextColor="#666"
             autoCapitalize="none"
             value={username}
             onChangeText={(t) => {
               setUsername(t);
-              errorMsg && setErrorMsg("");
+              if (errorMsg) setErrorMsg("");
             }}
           />
           <TextInput
             style={styles.input}
             placeholder="Password"
-            placeholderTextColor="#666"
             secureTextEntry
             value={password}
             onChangeText={(t) => {
               setPassword(t);
-              errorMsg && setErrorMsg("");
+              if (errorMsg) setErrorMsg("");
             }}
           />
-          {!!errorMsg && <Text style={styles.error}>{errorMsg}</Text>}
-          <TouchableOpacity style={styles.button} onPress={signup}>
+
+          {errorMsg ? <Text style={styles.error}>{errorMsg}</Text> : null}
+
+          <TouchableOpacity style={styles.button} onPress={register}>
             <Text style={styles.buttonText}>Register</Text>
           </TouchableOpacity>
+
           <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Text style={styles.linkText}>Already have an account? Login</Text>
+            <Text style={styles.linkText}>Have an account? Login</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -101,6 +117,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowRadius: 4,
   },
+  logo: { width: 80, height: 80, alignSelf: "center", marginBottom: 20 },
   input: {
     borderWidth: 1,
     borderColor: "#ccc",
