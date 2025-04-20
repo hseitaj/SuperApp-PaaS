@@ -1,116 +1,106 @@
-import React, { useState, useEffect, useCallback } from "react";
+/* screens/ChatListScreen.js */
+import React, {
+  useEffect,
+  useState,
+  useCallback,
+  useLayoutEffect,
+} from "react";
 import {
-  SafeAreaView,
-  FlatList,
-  TouchableOpacity,
-  Text,
-  StyleSheet,
   View,
+  FlatList,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
 } from "react-native";
-import axios from "axios";
+import Ionicons from "@expo/vector-icons/Ionicons"; // ✅ Snack‑friendly import
 import { SERVER_URL } from "../config";
+import AddContactModal from "../components/AddContactModal"; // ✅ default import
+import axios from "axios";
 
-export default function ChatListScreen({ route, navigation }) {
+export default function ChatListScreen({ navigation, route }) {
   const { user } = route.params;
   const [rooms, setRooms] = useState([]);
+  const [showModal, setShowModal] = useState(false);
 
-  /** fetch every time we navigate back */
-  useEffect(() => {
-    const unsubscribe = navigation.addListener("focus", () => {
-      axios
-        .get(`${SERVER_URL}/rooms/${user.id}`)
-        .then((res) => setRooms(res.data))
-        .catch(console.error);
+  /* header with log‑out */
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <TouchableOpacity
+          style={{ paddingRight: 16 }}
+          onPress={() => navigation.replace("Login")}
+        >
+          <Ionicons name="log-out-outline" size={24} color="#fff" />
+        </TouchableOpacity>
+      ),
+      headerStyle: { backgroundColor: "#0066CC" },
+      headerTintColor: "#fff",
     });
-    return unsubscribe;
-  }, [navigation, user.id]);
+  }, [navigation]);
 
-  /** single row */
+  /* fetch conversations */
+  useEffect(() => {
+    axios
+      .get(`${SERVER_URL}/rooms/${user.id}`)
+      .then(({ data }) => setRooms(data))
+      .catch(console.warn);
+  }, [user.id]);
+
+  /* list row */
   const renderRow = useCallback(
     ({ item }) => (
       <TouchableOpacity
         style={styles.row}
-        onPress={() =>
-          navigation.navigate("ChatRoom", {
-            user,
-            room: item.id,
-            name: item.friendName,
-          })
-        }
+        onPress={() => navigation.navigate("ChatRoom", { user, room: item })}
       >
-        <Text style={styles.title}>{item.friendName}</Text>
+        <Text style={styles.rowTxt}>{item.name}</Text>
       </TouchableOpacity>
     ),
     [navigation, user]
   );
 
-  /** empty-state component */
-  const Empty = () => (
-    <View style={styles.emptyWrap}>
-      <Text style={styles.emptyTxt}>No conversations yet.</Text>
-      <TouchableOpacity
-        style={styles.primaryBtn}
-        onPress={() => navigation.navigate("AddFriend", { user })}
-      >
-        <Text style={styles.btnTxt}>➕ Start a chat</Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        onPress={() => navigation.replace("Login")}
-        style={{ padding: 12 }}
-      >
-        <Text style={{ color: "#0066CC" }}>Log out</Text>
-      </TouchableOpacity>
-    </View>
-  );
-
   return (
-    <SafeAreaView style={{ flex: 1 }}>
-      <FlatList
-        data={rooms}
-        keyExtractor={(item) => item.id}
-        renderItem={renderRow}
-        ListEmptyComponent={Empty}
-        contentContainerStyle={rooms.length ? null : { flex: 1 }}
-      />
-      {/* floating add‑button even when list NOT empty */}
-      {rooms.length > 0 && (
-        <TouchableOpacity
-          style={styles.fab}
-          onPress={() => navigation.navigate("AddFriend", { user })}
-        >
-          <Text style={{ fontSize: 28, color: "#fff" }}>＋</Text>
-        </TouchableOpacity>
+    <View style={{ flex: 1 }}>
+      {rooms.length ? (
+        <FlatList
+          data={rooms}
+          renderItem={renderRow}
+          keyExtractor={(r) => r.id}
+        />
+      ) : (
+        <View style={styles.empty}>
+          <Text>No conversations yet.</Text>
+          <TouchableOpacity
+            style={styles.addBtn}
+            onPress={() => setShowModal(true)}
+          >
+            <Text style={{ color: "#fff" }}>Add someone</Text>
+          </TouchableOpacity>
+        </View>
       )}
-    </SafeAreaView>
+
+      <AddContactModal
+        visible={showModal}
+        onClose={() => setShowModal(false)}
+        currentId={user.id}
+        onPicked={(contact) => {
+          setShowModal(false);
+          navigation.navigate("ChatRoom", { user, room: contact });
+        }}
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  row: {
-    padding: 16,
-    borderBottomWidth: 1,
-    borderColor: "#eee",
-  },
-  title: { fontSize: 16, fontWeight: "600" },
-  emptyWrap: { flex: 1, justifyContent: "center", alignItems: "center" },
-  emptyTxt: { marginBottom: 24, color: "#777" },
-  primaryBtn: {
+  row: { padding: 16, borderBottomWidth: 1, borderColor: "#eee" },
+  rowTxt: { fontSize: 16 },
+  empty: { flex: 1, justifyContent: "center", alignItems: "center" },
+  addBtn: {
+    marginTop: 16,
     backgroundColor: "#0066CC",
+    paddingHorizontal: 20,
     paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 6,
-  },
-  btnTxt: { color: "#fff", fontWeight: "600" },
-  fab: {
-    position: "absolute",
-    bottom: 24,
-    right: 24,
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: "#0066CC",
-    justifyContent: "center",
-    alignItems: "center",
-    elevation: 4,
+    borderRadius: 4,
   },
 });

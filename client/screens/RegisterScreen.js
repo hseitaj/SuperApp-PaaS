@@ -1,4 +1,4 @@
-// client/screens/RegisterScreen.js
+/* screens/RegisterScreen.js */
 import React, { useState } from "react";
 import {
   SafeAreaView,
@@ -19,22 +19,24 @@ export default function RegisterScreen({ navigation }) {
   const [password, setPassword] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
 
+  /* sign‑up */
   const signup = async () => {
     setErrorMsg("");
     if (username.trim().length < 3) {
-      return setErrorMsg("Username must be ≥ 3 chars");
+      return setErrorMsg("Username must be ≥3 chars.");
     }
     if (password.length < 4) {
-      return setErrorMsg("Password must be ≥ 4 chars");
+      return setErrorMsg("Password must be ≥4 chars.");
     }
+
     try {
-      await axios.post(
+      const res = await axios.post(
         `${SERVER_URL}/signup`,
         { username: username.trim(), password },
         { headers: { "Content-Type": "application/json" } }
       );
-      alert("Account created — please log in");
-      navigation.goBack();
+      // auto‑login after successful registration
+      navigation.replace("ChatList", { user: res.data });
     } catch (e) {
       const msg =
         e.response?.data?.error ||
@@ -51,7 +53,6 @@ export default function RegisterScreen({ navigation }) {
     >
       <SafeAreaView style={styles.container}>
         <View style={styles.card}>
-          {/*  👇 same logo used in Login  */}
           <Image
             source={require("../assets/logo.png")}
             style={styles.logo}
@@ -59,19 +60,20 @@ export default function RegisterScreen({ navigation }) {
           />
 
           <TextInput
-            placeholder="Choose a username"
-            autoCapitalize="none"
             style={styles.input}
+            placeholder="Username"
+            autoCapitalize="none"
             value={username}
             onChangeText={(t) => {
               setUsername(t);
               if (errorMsg) setErrorMsg("");
             }}
           />
+
           <TextInput
-            placeholder="Create a password"
-            secureTextEntry
             style={styles.input}
+            placeholder="Password"
+            secureTextEntry
             value={password}
             onChangeText={(t) => {
               setPassword(t);
@@ -82,13 +84,11 @@ export default function RegisterScreen({ navigation }) {
           {errorMsg ? <Text style={styles.error}>{errorMsg}</Text> : null}
 
           <TouchableOpacity style={styles.button} onPress={signup}>
-            <Text style={styles.buttonText}>Create Account</Text>
+            <Text style={styles.buttonText}>Register</Text>
           </TouchableOpacity>
 
           <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Text style={styles.linkText}>
-              ← Already have an account? Log in
-            </Text>
+            <Text style={styles.linkText}>Have an account? Login</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -125,7 +125,11 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     backgroundColor: "#fafafa",
   },
-  error: { color: "red", marginBottom: 12, textAlign: "center" },
+  error: {
+    color: "red",
+    marginBottom: 12,
+    textAlign: "center",
+  },
   button: {
     backgroundColor: "#0066CC",
     padding: 14,

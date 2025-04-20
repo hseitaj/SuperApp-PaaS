@@ -1,3 +1,4 @@
+/* screens/LoginScreen.js */
 import React, { useState } from "react";
 import {
   SafeAreaView,
@@ -18,20 +19,20 @@ export default function LoginScreen({ navigation }) {
   const [password, setPassword] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
 
-  const login = async () => {
+  async function login() {
     setErrorMsg("");
-    if (username.trim().length < 3) return setErrorMsg("Username ≥3 chars");
-    if (password.length < 4) return setErrorMsg("Password ≥4 chars");
     try {
-      const res = await axios.post(`${SERVER_URL}/login`, {
-        username: username.trim(),
+      const { data } = await axios.post(`${SERVER_URL}/login`, {
+        username,
         password,
       });
-      navigation.replace("ChatList", { user: res.data });
+      navigation.replace("ChatList", { user: data });
     } catch (e) {
-      setErrorMsg(e.response?.data?.error || "Server unreachable");
+      setErrorMsg(
+        e.response?.data?.error || "Server unreachable, try again later."
+      );
     }
-  };
+  }
 
   return (
     <KeyboardAvoidingView
@@ -40,37 +41,26 @@ export default function LoginScreen({ navigation }) {
     >
       <SafeAreaView style={styles.container}>
         <View style={styles.card}>
-          <Image
-            source={require("../assets/logo.png")}
-            style={styles.logo}
-            resizeMode="contain"
-          />
+          <Image source={require("../assets/logo.png")} style={styles.logo} />
           <TextInput
             style={styles.input}
             placeholder="Username"
-            autoCapitalize="none"
             value={username}
-            onChangeText={(t) => {
-              setUsername(t);
-              if (errorMsg) setErrorMsg("");
-            }}
+            onChangeText={setUsername}
           />
           <TextInput
             style={styles.input}
             placeholder="Password"
             secureTextEntry
             value={password}
-            onChangeText={(t) => {
-              setPassword(t);
-              if (errorMsg) setErrorMsg("");
-            }}
+            onChangeText={setPassword}
           />
           {errorMsg ? <Text style={styles.error}>{errorMsg}</Text> : null}
-          <TouchableOpacity style={styles.button} onPress={login}>
-            <Text style={styles.buttonText}>Login</Text>
+          <TouchableOpacity style={styles.btn} onPress={login}>
+            <Text style={styles.btnTxt}>Login</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={() => navigation.navigate("Register")}>
-            <Text style={styles.linkText}>Don’t have an account? Register</Text>
+            <Text style={styles.link}>Don’t have an account? Register</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -79,23 +69,13 @@ export default function LoginScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#0066CC",
-    justifyContent: "center",
-    alignItems: "center",
-  },
+  container: { flex: 1, justifyContent: "center", alignItems: "center" },
   card: {
     width: "90%",
     maxWidth: 400,
     backgroundColor: "#fff",
     padding: 24,
     borderRadius: 8,
-    elevation: 4,
-    shadowColor: "#000",
-    shadowOpacity: 0.1,
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 4,
   },
   logo: { width: 80, height: 80, alignSelf: "center", marginBottom: 20 },
   input: {
@@ -105,16 +85,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 4,
-    backgroundColor: "#fafafa",
   },
-  error: { color: "red", marginBottom: 12, textAlign: "center" },
-  button: {
+  error: { color: "red", textAlign: "center", marginBottom: 12 },
+  btn: {
     backgroundColor: "#0066CC",
     padding: 14,
     borderRadius: 4,
     alignItems: "center",
     marginBottom: 12,
   },
-  buttonText: { color: "#fff", fontWeight: "600" },
-  linkText: { color: "#0066CC", textAlign: "center" },
+  btnTxt: { color: "#fff", fontWeight: "600" },
+  link: { color: "#0066CC", textAlign: "center" },
 });
