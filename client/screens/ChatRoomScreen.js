@@ -1,83 +1,79 @@
-import React, { useState, useEffect } from "react";
+// superapp-paas/client/screens/ChatRoomScreen.js
+import React, { useState, useEffect, useRef } from "react";
 import {
   SafeAreaView,
   View,
   FlatList,
-  Text,
   TextInput,
-  Button,
-  Image,
   TouchableOpacity,
+  Text,
+  Image,
   StyleSheet,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
-import * as ImagePicker from "expo-image-picker";
 import axios from "axios";
+import io from "socket.io-client";
+import * as ImagePicker from "expo-image-picker";
 import { Audio } from "expo-av";
 import * as Notifications from "expo-notifications";
-import io from "socket.io-client";
 import { SERVER_URL } from "../config";
 
-export default function ChatRoomScreen({ route }) {
-  const { user, partner } = route.params;
-  const roomId = [user.id, partner.id].sort().join("_");
-
-  const [socket, setSocket] = useState(null);
+export default function ChatRoomScreen({ route, navigation }) {
+  const { user, room } = route.params;
   const [chats, setChats] = useState([]);
   const [message, setMessage] = useState("");
   const [recording, setRecording] = useState(null);
+  const socketRef = useRef();
 
   useEffect(() => {
+    navigation.setOptions({ headerShown: true, title: `Chat: ${room}` });
+
     Notifications.requestPermissionsAsync();
     Notifications.setNotificationHandler({
       handleNotification: async () => ({ shouldShowAlert: true }),
     });
 
     axios
-      .get(`${SERVER_URL}/messages/${roomId}`)
-      .then((res) => setChats(res.data))
+      .get(`${SERVER_URL}/messages/${room}`)
+      .then((r) => setChats(r.data))
       .catch(console.error);
 
-    const s = io(SERVER_URL);
-    s.emit("join", roomId);
-    s.on("message", (msg) => {
-      if (msg.sender !== user.username) {
-        setChats((prev) => [...prev, msg]);
-      }
+    const socket = io(SERVER_URL, { transports: ["websocket"] });
+    socketRef.current = socket;
+    socket.emit("join", room);
+    socket.on("message", (msg) => {
+      setChats((prev) =>
+        prev.find((m) => m.id === msg.id) ? prev : [...prev, msg]
+      );
       Notifications.scheduleNotificationAsync({
         content: {
           title: `New from ${msg.sender}`,
-          body: msg.type === "text" ? msg.content : msg.type.toUpperCase(),
+          body: msg.type === "text" ? msg.content : msg.type,
         },
         trigger: null,
       });
     });
-    setSocket(s);
-
     return () => {
-      s.disconnect();
-      if (recording) recording.stopAndUnloadAsync();
+      socket.disconnect();
+      recording?.stopAndUnloadAsync();
     };
   }, []);
 
   const sendMessage = (content, type = "text") => {
-    socket.emit("message", {
-      sender: user.id,
-      receiver: partner.id,
-      content,
-      type,
-    });
-    setChats((prev) => [...prev, { sender: user.username, content, type }]);
-    setMessage("");
+    const payload = { sender: user.username, receiver: room, content, type };
+    socketRef.current.emit("message", payload);
+    setChats((prev) => [...prev, { id: Date.now().toString(), ...payload }]);
   };
 
   const pickImage = async () => {
     const { assets } = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.All,
+      mediaTypes: ImagePicker.MediaType.All,
     });
     if (!assets?.length) return;
     const uri = assets[0].uri;
     const form = new FormData();
-    form.append("file", { uri, name: "photo.jpg", type: "image/jpeg" });
+    form.append("file", { uri, name: "upload.jpg", type: "image/jpeg" });
     const { data } = await axios.post(`${SERVER_URL}/upload`, form, {
       headers: { "Content-Type": "multipart/form-data" },
     });
@@ -124,44 +120,59 @@ export default function ChatRoomScreen({ route }) {
     }
     return (
       <Text style={styles.text}>
-        {item.sender}: {item.content}
+        <Text style={styles.bold}>{item.sender}: </Text>
+        {item.content}
       </Text>
     );
   };
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={styles.container}>
       <FlatList
         data={chats}
-        keyExtractor={(_, i) => i.toString()}
-        contentContainerStyle={styles.container}
+        keyExtractor={(c) => c.id}
         renderItem={renderItem}
+        contentContainerStyle={styles.chatList}
       />
-      <View style={styles.footer}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        style={styles.inputRow}
+      >
         <TextInput
           style={styles.input}
-          placeholder="Type a message…"
+          placeholder="Message…"
+          placeholderTextColor="#666"
           value={message}
           onChangeText={setMessage}
         />
-        <Button title="Send" onPress={() => sendMessage(message)} />
-        <Button title="📷" onPress={pickImage} />
-        <Button
-          title={recording ? "Stop 📼" : "Record 🎙️"}
-          onPress={toggleRecording}
-        />
-      </View>
+        <TouchableOpacity
+          style={styles.iconButton}
+          onPress={() => {
+            sendMessage(message);
+            setMessage("");
+          }}
+        >
+          <Text>🗨️</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.iconButton} onPress={pickImage}>
+          <Text>📷</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.iconButton} onPress={toggleRecording}>
+          <Text>{recording ? "⏹️" : "🎤"}</Text>
+        </TouchableOpacity>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#fff" },
-  container: { padding: 12, flexGrow: 1 },
-  text: { marginVertical: 4 },
-  media: { width: 200, height: 200, marginVertical: 8 },
-  audio: { color: "#0066CC", marginVertical: 8 },
-  footer: {
+  container: { flex: 1 },
+  chatList: { padding: 16 },
+  text: { marginBottom: 8 },
+  bold: { fontWeight: "600" },
+  media: { width: 200, height: 200, marginBottom: 8 },
+  audio: { color: "#0066CC", marginBottom: 8 },
+  inputRow: {
     flexDirection: "row",
     alignItems: "center",
     padding: 8,
@@ -172,8 +183,10 @@ const styles = StyleSheet.create({
     flex: 1,
     borderWidth: 1,
     borderColor: "#ccc",
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     marginRight: 8,
-    padding: 8,
-    borderRadius: 4,
   },
+  iconButton: { padding: 8 },
 });

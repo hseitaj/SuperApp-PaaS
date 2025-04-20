@@ -1,3 +1,4 @@
+// superapp-paas/client/screens/ChatListScreen.js
 import React, { useState, useEffect } from "react";
 import {
   SafeAreaView,
@@ -10,61 +11,65 @@ import {
 import axios from "axios";
 import { SERVER_URL } from "../config";
 
-export default function ChatListScreen({ route, navigation }) {
+export default function ChatListScreen({ navigation, route }) {
   const { user } = route.params;
-  const [users, setUsers] = useState([]);
+  const [rooms, setRooms] = useState([]);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     axios
-      .get(`${SERVER_URL}/users`)
-      .then((res) => {
-        const others = res.data.filter((u) => u.id !== user.id);
-        setUsers(others);
-      })
-      .catch((err) => console.error("Users fetch error:", err));
+      .get(`${SERVER_URL}/rooms/${user.id}`)
+      .then((r) => setRooms(r.data))
+      .catch(() => setError("Failed to load rooms."));
   }, []);
+
+  const logout = () => navigation.replace("Login");
+
+  const renderItem = ({ item }) => (
+    <TouchableOpacity
+      style={styles.room}
+      onPress={() => navigation.navigate("ChatRoom", { user, room: item.id })}
+    >
+      <Text style={styles.roomText}>{item.name}</Text>
+    </TouchableOpacity>
+  );
 
   return (
     <SafeAreaView style={styles.container}>
-      <Text style={styles.header}>Hello, {user.username}!</Text>
+      <View style={styles.header}>
+        <Text style={styles.title}>Welcome, {user.username}</Text>
+        <TouchableOpacity onPress={logout}>
+          <Text style={styles.logout}>Logout</Text>
+        </TouchableOpacity>
+      </View>
+      {!!error && <Text style={styles.error}>{error}</Text>}
       <FlatList
-        data={users}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={{ flexGrow: 1 }}
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            style={styles.item}
-            onPress={() =>
-              navigation.navigate("ChatRoom", { user, partner: item })
-            }
-          >
-            <Text style={styles.username}>{item.username}</Text>
-          </TouchableOpacity>
-        )}
+        data={rooms}
+        keyExtractor={(r) => r.id}
+        renderItem={renderItem}
         ListEmptyComponent={
-          <Text style={styles.empty}>No other users yet.</Text>
+          <Text style={styles.empty}>No chats yet. Start one!</Text>
         }
       />
-      <TouchableOpacity
-        style={styles.logout}
-        onPress={() => navigation.replace("Login")}
-      >
-        <Text style={styles.logoutText}>Log Out</Text>
-      </TouchableOpacity>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 16 },
-  header: { fontSize: 20, marginBottom: 12, fontWeight: "500" },
-  item: {
-    padding: 12,
+  header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 12,
+  },
+  title: { fontSize: 18, fontWeight: "600" },
+  logout: { color: "red" },
+  room: {
+    padding: 16,
     borderBottomWidth: 1,
     borderColor: "#eee",
   },
-  username: { fontSize: 16 },
-  empty: { textAlign: "center", marginTop: 20, color: "#666" },
-  logout: { marginTop: 20, alignItems: "center" },
-  logoutText: { color: "red", fontWeight: "500" },
+  roomText: { fontSize: 16 },
+  empty: { textAlign: "center", marginTop: 24, color: "#666" },
+  error: { color: "red", textAlign: "center", marginBottom: 12 },
 });

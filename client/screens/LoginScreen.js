@@ -1,3 +1,4 @@
+// superapp-paas/client/screens/LoginScreen.js
 import React, { useState } from "react";
 import {
   SafeAreaView,
@@ -20,12 +21,9 @@ export default function LoginScreen({ navigation }) {
 
   const login = async () => {
     setErrorMsg("");
-    if (username.trim().length < 3) {
-      return setErrorMsg("Username must be at least 3 characters.");
-    }
-    if (password.length < 4) {
-      return setErrorMsg("Password must be at least 4 characters.");
-    }
+    if (username.trim().length < 3)
+      return setErrorMsg("Username must be ≥3 chars.");
+    if (password.length < 4) return setErrorMsg("Password must be ≥4 chars.");
 
     try {
       const res = await axios.post(
@@ -35,20 +33,18 @@ export default function LoginScreen({ navigation }) {
       );
       navigation.replace("ChatList", { user: res.data });
     } catch (e) {
-      let msg = "An unexpected error occurred.";
-      if (e.response) {
-        msg = e.response.data.error || "Invalid credentials.";
-      } else if (e.request) {
-        msg = "Cannot reach server.";
-      }
-      setErrorMsg(msg);
+      console.error("Login error:", e.response?.data || e.message);
+      setErrorMsg(
+        e.response?.data?.error ||
+          (e.request ? "Server unreachable" : e.message)
+      );
     }
   };
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
       style={{ flex: 1 }}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <SafeAreaView style={styles.container}>
         <View style={styles.card}>
@@ -60,6 +56,7 @@ export default function LoginScreen({ navigation }) {
           <TextInput
             style={styles.input}
             placeholder="Username"
+            placeholderTextColor="#666"
             autoCapitalize="none"
             value={username}
             onChangeText={(t) => {
@@ -70,6 +67,7 @@ export default function LoginScreen({ navigation }) {
           <TextInput
             style={styles.input}
             placeholder="Password"
+            placeholderTextColor="#666"
             secureTextEntry
             value={password}
             onChangeText={(t) => {
@@ -77,7 +75,7 @@ export default function LoginScreen({ navigation }) {
               errorMsg && setErrorMsg("");
             }}
           />
-          {errorMsg ? <Text style={styles.error}>{errorMsg}</Text> : null}
+          {!!errorMsg && <Text style={styles.error}>{errorMsg}</Text>}
           <TouchableOpacity style={styles.button} onPress={login}>
             <Text style={styles.buttonText}>Login</Text>
           </TouchableOpacity>
@@ -109,7 +107,12 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowRadius: 4,
   },
-  logo: { width: 80, height: 80, alignSelf: "center", marginBottom: 20 },
+  logo: {
+    width: 80,
+    height: 80,
+    alignSelf: "center",
+    marginBottom: 20,
+  },
   input: {
     borderWidth: 1,
     borderColor: "#ccc",

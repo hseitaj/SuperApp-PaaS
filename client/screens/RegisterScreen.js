@@ -1,9 +1,8 @@
-// client/screens/RegisterScreen.js
+// superapp-paas/client/screens/RegisterScreen.js
 import React, { useState } from "react";
 import {
   SafeAreaView,
   View,
-  Image,
   TextInput,
   TouchableOpacity,
   Text,
@@ -21,12 +20,9 @@ export default function RegisterScreen({ navigation }) {
 
   const signup = async () => {
     setErrorMsg("");
-    if (username.trim().length < 3) {
+    if (username.trim().length < 3)
       return setErrorMsg("Username must be ≥3 chars.");
-    }
-    if (password.length < 4) {
-      return setErrorMsg("Password must be ≥4 chars.");
-    }
+    if (password.length < 4) return setErrorMsg("Password must be ≥4 chars.");
 
     try {
       const res = await axios.post(
@@ -36,48 +32,44 @@ export default function RegisterScreen({ navigation }) {
       );
       navigation.replace("ChatList", { user: res.data });
     } catch (e) {
-      console.error("Signup error payload:", e.response?.data || e.message);
-      const msg =
+      console.error("Signup error:", e.response?.data || e.message);
+      setErrorMsg(
         e.response?.data?.error ||
-        (e.request && "Server unreachable") ||
-        e.message;
-      setErrorMsg(msg);
+          (e.request ? "Server unreachable" : e.message)
+      );
     }
   };
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
       style={{ flex: 1 }}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <SafeAreaView style={styles.container}>
         <View style={styles.card}>
-          <Image
-            source={require("../assets/logo.png")}
-            style={styles.logo}
-            resizeMode="contain"
-          />
           <TextInput
             style={styles.input}
-            placeholder="Choose a Username"
+            placeholder="Username"
+            placeholderTextColor="#666"
             autoCapitalize="none"
             value={username}
             onChangeText={(t) => {
               setUsername(t);
-              if (errorMsg) setErrorMsg("");
+              errorMsg && setErrorMsg("");
             }}
           />
           <TextInput
             style={styles.input}
-            placeholder="Choose a Password"
+            placeholder="Password"
+            placeholderTextColor="#666"
             secureTextEntry
             value={password}
             onChangeText={(t) => {
               setPassword(t);
-              if (errorMsg) setErrorMsg("");
+              errorMsg && setErrorMsg("");
             }}
           />
-          {errorMsg ? <Text style={styles.error}>{errorMsg}</Text> : null}
+          {!!errorMsg && <Text style={styles.error}>{errorMsg}</Text>}
           <TouchableOpacity style={styles.button} onPress={signup}>
             <Text style={styles.buttonText}>Register</Text>
           </TouchableOpacity>
@@ -109,7 +101,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowRadius: 4,
   },
-  logo: { width: 80, height: 80, alignSelf: "center", marginBottom: 20 },
   input: {
     borderWidth: 1,
     borderColor: "#ccc",
