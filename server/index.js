@@ -14,6 +14,9 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// ★ health check for GET /
+app.get("/", (req, res) => res.send("OK"));
+
 // static folder for uploads
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
