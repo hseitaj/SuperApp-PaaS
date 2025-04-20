@@ -116,5 +116,18 @@ io.on("connection", (socket) => {
   });
 });
 
+// SEARCH users by username (case‑insensitive, simple LIKE)
+app.get("/search", (req, res) => {
+  const q = `%${(req.query.username || "").toLowerCase()}%`;
+  db.all(
+    "SELECT id, username FROM users WHERE LOWER(username) LIKE ? LIMIT 20",
+    [q],
+    (err, rows) => {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json(rows);
+    }
+  );
+});
+
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`Server running on ${PORT}`));
