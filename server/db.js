@@ -27,4 +27,16 @@ db.serialize(() => {
   )`);
 });
 
+// --- one‑time migration: add "seen" column if it isn't there yet ---
+db.get("PRAGMA table_info(messages)", (_, infoRows) => {
+  const hasSeen = Array.isArray(infoRows)
+    ? infoRows.some((r) => r.name === "seen")
+    : false;
+
+  if (!hasSeen) {
+    db.run("ALTER TABLE messages ADD COLUMN seen INTEGER DEFAULT 0");
+    console.log('⏫  Added "seen" column to messages table');
+  }
+});
+
 module.exports = db;
