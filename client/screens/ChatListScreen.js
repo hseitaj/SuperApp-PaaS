@@ -1,10 +1,4 @@
-/* screens/ChatListScreen.js */
-import React, {
-  useEffect,
-  useState,
-  useCallback,
-  useLayoutEffect,
-} from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import {
   View,
   FlatList,
@@ -12,52 +6,66 @@ import {
   TouchableOpacity,
   StyleSheet,
 } from "react-native";
-import Ionicons from "@expo/vector-icons/Ionicons"; // ✅ Snack‑friendly import
-import { SERVER_URL } from "../config";
-import AddContactModal from "../components/AddContactModal"; // ✅ default import
 import axios from "axios";
+import { SERVER_URL } from "../config";
+import AddContactModal from "../components/AddContactModal";
+import SettingsButton from "../components/SettingsButton";
 
 export default function ChatListScreen({ navigation, route }) {
   const { user } = route.params;
   const [rooms, setRooms] = useState([]);
   const [showModal, setShowModal] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  /* header with log‑out */
-  useLayoutEffect(() => {
+  /* ▸ gear only on this screen */
+  useEffect(() => {
     navigation.setOptions({
-      headerRight: () => (
-        <TouchableOpacity
-          style={{ paddingRight: 16 }}
-          onPress={() => navigation.replace("Login")}
-        >
-          <Ionicons name="log-out-outline" size={24} color="#fff" />
-        </TouchableOpacity>
-      ),
-      headerStyle: { backgroundColor: "#0066CC" },
-      headerTintColor: "#fff",
+      title: "Chats",
+      headerRight: () => <SettingsButton navigation={navigation} />,
     });
   }, [navigation]);
 
-  /* fetch conversations */
-  useEffect(() => {
+  /* ▸ fetch rooms + lite polling */
+  const loadRooms = useCallback(() => {
+    setLoading(true);
     axios
-      .get(`${SERVER_URL}/rooms/${user.id}`)
+      .get(`${SERVER_URL}/roomsWithMeta/${user.id}`)
       .then(({ data }) => setRooms(data))
-      .catch(console.warn);
+      .catch(console.warn)
+      .finally(() => setLoading(false));
   }, [user.id]);
 
-  /* list row */
+  useEffect(() => {
+    loadRooms();
+    const id = setInterval(loadRooms, 8_000);
+    return () => clearInterval(id);
+  }, [loadRooms]);
+
+  /* ▸ render one conversation row */
   const renderRow = useCallback(
     ({ item }) => (
       <TouchableOpacity
         style={styles.row}
         onPress={() => navigation.navigate("ChatRoom", { user, room: item })}
       >
-        <Text style={styles.rowTxt}>{item.name}</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.name}>{item.name}</Text>
+          <Text numberOfLines={1} style={styles.preview}>
+            {item.lastMsg || "Start the conversation…"}
+          </Text>
+        </View>
+        {item.unseen ? <View style={styles.dot} /> : null}
       </TouchableOpacity>
     ),
     [navigation, user]
   );
+
+  if (loading)
+    return (
+      <View style={styles.center}>
+        <Text>Loading…</Text>
+      </View>
+    );
 
   return (
     <View style={{ flex: 1 }}>
@@ -68,7 +76,7 @@ export default function ChatListScreen({ navigation, route }) {
           keyExtractor={(r) => r.id}
         />
       ) : (
-        <View style={styles.empty}>
+        <View style={styles.center}>
           <Text>No conversations yet.</Text>
           <TouchableOpacity
             style={styles.addBtn}
@@ -79,6 +87,7 @@ export default function ChatListScreen({ navigation, route }) {
         </View>
       )}
 
+      {/* ── modal for searching users  */}
       <AddContactModal
         visible={showModal}
         onClose={() => setShowModal(false)}
@@ -93,12 +102,27 @@ export default function ChatListScreen({ navigation, route }) {
 }
 
 const styles = StyleSheet.create({
-  row: { padding: 16, borderBottomWidth: 1, borderColor: "#eee" },
-  rowTxt: { fontSize: 16 },
-  empty: { flex: 1, justifyContent: "center", alignItems: "center" },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderColor: "#eee",
+  },
+  name: { fontSize: 16, fontWeight: "600" },
+  preview: { fontSize: 13, color: "#777", marginTop: 2 },
+  dot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: "#ff3b30",
+    marginLeft: 8,
+  },
+  center: { flex: 1, justifyContent: "center", alignItems: "center" },
   addBtn: {
     marginTop: 16,
-    backgroundColor: "#0066CC",
+    backgroundColor: "#0066cc",
     paddingHorizontal: 20,
     paddingVertical: 12,
     borderRadius: 4,

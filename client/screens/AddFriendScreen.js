@@ -24,11 +24,7 @@ export default function AddFriendScreen({ route, navigation }) {
       );
       const match = data.find((u) => u.id !== user.id);
       if (!match) return Alert.alert("Not found", "No user with that name.");
-      navigation.replace("ChatRoom", {
-        user,
-        room: match.id,
-        name: match.username,
-      });
+      navigation.replace("ChatRoom", { user, room: match.id, name: match.username });
     } catch (e) {
       Alert.alert("Error", e.response?.data?.error || e.message);
     } finally {

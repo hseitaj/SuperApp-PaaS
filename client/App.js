@@ -1,8 +1,5 @@
-/* App.js */
-import React from "react";
 import { NavigationContainer } from "@react-navigation/native";
 import { createStackNavigator } from "@react-navigation/stack";
-
 import LoginScreen from "./screens/LoginScreen";
 import RegisterScreen from "./screens/RegisterScreen";
 import ChatListScreen from "./screens/ChatListScreen";
@@ -14,29 +11,30 @@ export default function App() {
   return (
     <NavigationContainer>
       <Stack.Navigator
-        // header hidden by default; we’ll enable it per‑screen below
-        screenOptions={{ headerShown: false }}
+        screenOptions={{
+          headerStyle: { backgroundColor: "#0066CC" },
+          headerTintColor: "#fff",
+        }}
       >
-        {/* -------- AUTH -------- */}
-        <Stack.Screen name="Login" component={LoginScreen} />
-        <Stack.Screen name="Register" component={RegisterScreen} />
-
-        {/* -------- MAIN LIST (needs header) -------- */}
+        <Stack.Screen
+          name="Login"
+          component={LoginScreen}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="Register"
+          component={RegisterScreen}
+          options={{ headerShown: false }}
+        />
         <Stack.Screen
           name="ChatList"
           component={ChatListScreen}
-          options={{ headerShown: true, title: "Chats" }}
+          options={{ title: "Chats" }}
         />
-
-        {/* -------- INDIVIDUAL CHAT ROOM -------- */}
         <Stack.Screen
           name="ChatRoom"
           component={ChatRoomScreen}
-          options={({ route }) => ({
-            headerShown: true,
-            title: route.params?.room?.name ?? "Chat",
-            headerBackTitleVisible: false, // cleaner look on iOS
-          })}
+          options={({ route }) => ({ title: route.params.room.name })}
         />
       </Stack.Navigator>
     </NavigationContainer>
