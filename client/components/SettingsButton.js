@@ -1,4 +1,3 @@
-// client/components/SettingsButton.js
 import React, { useState } from "react";
 import { Pressable } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -13,7 +12,6 @@ export default function SettingsButton({ navigation }) {
         <Ionicons name="settings-outline" size={22} color="#fff" />
       </Pressable>
 
-      {/* tiny slide‑up with “Log‑out” */}
       <SettingsModal
         visible={open}
         onClose={() => setOpen(false)}

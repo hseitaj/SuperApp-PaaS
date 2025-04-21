@@ -1,26 +1,26 @@
-/* screens/LoginScreen.js */
+/* client/screens/LoginScreen.js */
 import React, { useState } from "react";
 import {
-  SafeAreaView,
   View,
+  Text,
   Image,
   TextInput,
   TouchableOpacity,
-  Text,
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import axios from "axios";
 import { SERVER_URL } from "../config";
 
 export default function LoginScreen({ navigation }) {
+  const insets = useSafeAreaInsets();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [errorMsg, setErrorMsg] = useState("");
+  const [err, setErr] = useState("");
 
-  async function login() {
-    setErrorMsg("");
+  const submit = async () => {
     try {
       const { data } = await axios.post(`${SERVER_URL}/login`, {
         username,
@@ -28,72 +28,80 @@ export default function LoginScreen({ navigation }) {
       });
       navigation.replace("ChatList", { user: data });
     } catch (e) {
-      setErrorMsg(
-        e.response?.data?.error || "Server unreachable, try again later."
-      );
+      setErr(e.response?.data?.error || "Network error");
     }
-  }
+  };
 
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : undefined}
-      style={{ flex: 1 }}
+      style={[
+        styles.root,
+        { paddingTop: insets.top + 32, paddingBottom: insets.bottom + 16 },
+      ]}
     >
-      <SafeAreaView style={styles.container}>
-        <View style={styles.card}>
-          <Image source={require("../assets/logo.png")} style={styles.logo} />
-          <TextInput
-            style={styles.input}
-            placeholder="Username"
-            value={username}
-            onChangeText={setUsername}
-          />
-          <TextInput
-            style={styles.input}
-            placeholder="Password"
-            secureTextEntry
-            value={password}
-            onChangeText={setPassword}
-          />
-          {errorMsg ? <Text style={styles.error}>{errorMsg}</Text> : null}
-          <TouchableOpacity style={styles.btn} onPress={login}>
-            <Text style={styles.btnTxt}>Login</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => navigation.navigate("Register")}>
-            <Text style={styles.link}>Don’t have an account? Register</Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
+      <View style={styles.card}>
+        <Image source={require("../assets/logo.png")} style={styles.logo} />
+        <TextInput
+          placeholder="Username"
+          placeholderTextColor="#888"
+          style={styles.input}
+          value={username}
+          onChangeText={(t) => {
+            setUsername(t);
+            setErr("");
+          }}
+        />
+        <TextInput
+          placeholder="Password"
+          placeholderTextColor="#888"
+          style={styles.input}
+          secureTextEntry
+          value={password}
+          onChangeText={(t) => {
+            setPassword(t);
+            setErr("");
+          }}
+        />
+        {!!err && <Text style={styles.err}>{err}</Text>}
+        <TouchableOpacity style={styles.btn} onPress={submit}>
+          <Text style={styles.btnTxt}>Login</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => navigation.navigate("Register")}>
+          <Text style={styles.link}>Don’t have an account? Register</Text>
+        </TouchableOpacity>
+      </View>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: "center", alignItems: "center" },
+  root: { flex: 1, backgroundColor: "#0066CC", alignItems: "center" },
   card: {
     width: "90%",
-    maxWidth: 400,
+    maxWidth: 420,
+    padding: 28,
+    borderRadius: 10,
     backgroundColor: "#fff",
-    padding: 24,
-    borderRadius: 8,
+    elevation: 4,
+    gap: 14,
   },
-  logo: { width: 80, height: 80, alignSelf: "center", marginBottom: 20 },
+  logo: { width: 80, height: 80, alignSelf: "center", marginBottom: 10 },
   input: {
     borderWidth: 1,
     borderColor: "#ccc",
-    marginBottom: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 4,
+    borderRadius: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
   },
-  error: { color: "red", textAlign: "center", marginBottom: 12 },
+  err: { color: "red", textAlign: "center" },
   btn: {
     backgroundColor: "#0066CC",
-    padding: 14,
-    borderRadius: 4,
+    borderRadius: 6,
+    paddingVertical: 14,
     alignItems: "center",
-    marginBottom: 12,
+    marginTop: 6,
   },
   btnTxt: { color: "#fff", fontWeight: "600" },
-  link: { color: "#0066CC", textAlign: "center" },
+  link: { color: "#0066CC", textAlign: "center", marginTop: 4 },
 });

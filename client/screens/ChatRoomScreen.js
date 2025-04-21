@@ -1,218 +1,204 @@
-/* screens/ChatRoomScreen.js */
-import React, { useEffect, useState, useRef } from "react";
+/* client/screens/ChatRoomScreen.js */
+import React, { useEffect, useRef, useState } from "react";
 import {
   View,
+  Text,
+  FlatList,
   TextInput,
   TouchableOpacity,
-  FlatList,
   KeyboardAvoidingView,
-  Platform,
   StyleSheet,
-  Alert,
+  Platform,
+  Image,
 } from "react-native";
-import Ionicons from "@expo/vector-icons/Ionicons";
 import * as ImagePicker from "expo-image-picker";
-import * as ImageManipulator from "expo-image-manipulator";
-import { Audio } from "expo-av";
+import * as FileSystem from "expo-file-system";
 import io from "socket.io-client";
+import dayjs from "dayjs";
 import axios from "axios";
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { SERVER_URL } from "../config";
-import MessageBubble from "../components/MessageBubble";
-import FullImageModal from "../components/FullImageModal";
 
 export default function ChatRoomScreen({ navigation, route }) {
   const { user, room } = route.params;
-  const [socket] = useState(() => io(SERVER_URL));
+  const [list, setList] = useState([]);
   const [text, setText] = useState("");
-  const [messages, setMessages] = useState([]);
-  const [fullImg, setFullImg] = useState(null);
-  const listRef = useRef(null);
+  const flat = useRef(null);
 
-  /* header title */
+  /* realtime --------------------------------------------------------------- */
   useEffect(() => {
-    navigation.setOptions({ title: room.name || "Chat" });
-  }, [navigation, room]);
+    const s = io(SERVER_URL, { transports: ["websocket"] });
+    s.emit("join", user.id);
+    s.on("message", (m) => {
+      // only keep messages for THIS room
+      if (
+        (m.sender === user.id && m.receiver === room.id) ||
+        (m.sender === room.id && m.receiver === user.id)
+      ) {
+        setList((p) => [...p, m]);
+        flat.current?.scrollToEnd({ animated: true });
+      }
+    });
+    return () => s.disconnect();
+  }, [user.id, room.id]);
 
-  /* join + history */
+  /* history ---------------------------------------------------------------- */
   useEffect(() => {
-    socket.emit("join", user.id);
-    socket.on("message", (msg) => {
-      if (msg.sender === room.id) markSeen();
-      setMessages((m) => [...m, msg]);
-    });
-    axios
-      .get(`${SERVER_URL}/messages/${room.id}/${user.id}`)
-      .then(({ data }) => {
-        setMessages(data);
-        markSeen();
-      });
-    return () => socket.disconnect();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    (async () => {
+      const { data } = await axios.get(
+        `${SERVER_URL}/messages/${user.id}/${room.id}`
+      );
+      setList(data);
+      setTimeout(() => flat.current?.scrollToEnd({ animated: false }), 50);
+    })();
+  }, [user.id, room.id]);
 
-  const markSeen = () =>
-    socket.emit("seen", { viewer: user.id, partner: room.id });
+  /* helpers ---------------------------------------------------------------- */
+  const timestamp = () => Math.floor(Date.now() / 1000);
 
-  /* helpers */
-  const send = (content, type = "text") => {
-    socket.emit("message", {
-      sender: user.id,
-      receiver: room.id,
-      content,
-      type,
-    });
-    setMessages((m) => [
-      ...m,
-      {
-        id: Date.now().toString(),
-        sender: user.id,
-        receiver: room.id,
-        content,
-        type,
-        createdAt: Date.now(),
-        delivered: 1,
-        seen: 1,
-      },
-    ]);
-    setText("");
-    listRef.current?.scrollToEnd({ animated: true });
+  const pushLocal = (payload) => {
+    setList((p) => [...p, payload]);
+    flat.current?.scrollToEnd({ animated: true });
   };
 
-  /* ---------- image ---------- */
+  const sendText = async () => {
+    if (!text.trim()) return;
+    const payload = {
+      sender: user.id,
+      receiver: room.id,
+      content: text.trim(),
+      type: "text",
+      timestamp: timestamp(),
+    };
+    pushLocal(payload);
+    setText("");
+    axios.post(`${SERVER_URL}/messages`, payload).catch(console.warn);
+  };
+
   const pickImage = async () => {
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) return Alert.alert("Permission required");
     const res = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       quality: 0.7,
-      allowsMultipleSelection: false,
     });
     if (res.canceled) return;
-    const asset = res.assets[0];
 
-    // resize down to 1080px wide
-    const manip = await ImageManipulator.manipulateAsync(
-      asset.uri,
-      [{ resize: { width: 1080 } }],
-      { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
-    );
-
-    const form = new FormData();
+    const localUri = res.assets[0].uri;
+    const form     = new FormData();
     form.append("file", {
-      uri: manip.uri,
+      uri: localUri,
+      name: localUri.split("/").pop(),
       type: "image/jpeg",
-      name: "upload.jpg",
     });
+
     try {
       const { data } = await axios.post(`${SERVER_URL}/upload`, form, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-      send(data.url, "image");
-    } catch (e) {
-      console.warn("Image pick failed:", e.message);
+      const payload = {
+        sender: user.id,
+        receiver: room.id,
+        content: data.url,
+        type: "image",
+        timestamp: timestamp(),
+      };
+      pushLocal(payload);
+      axios.post(`${SERVER_URL}/messages`, payload);
+    } catch (err) {
+      console.warn("Image pick failed", err.message);
     }
   };
 
-  /* ---------- voice ---------- */
-  const [recording, setRecording] = useState(null);
-  const toggleRec = async () => {
-    if (Platform.OS === "web") return alert("Voice only on device");
-    if (!recording) {
-      const { granted } = await Audio.requestPermissionsAsync();
-      if (!granted) return;
-      const rec = new Audio.Recording();
-      await rec.prepareToRecordAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY
-      );
-      await rec.startAsync();
-      setRecording(rec);
-    } else {
-      await recording.stopAndUnloadAsync();
-      const uri = recording.getURI();
-      setRecording(null);
+  /* row -------------------------------------------------------------------- */
+  const render = ({ item }) => {
+    const mine = item.sender === user.id;
+    const wrap = [styles.bubble, mine ? styles.mine : styles.theirs];
 
-      const form = new FormData();
-      form.append("file", { uri, type: "audio/m4a", name: "v.m4a" });
-      try {
-        const { data } = await axios.post(`${SERVER_URL}/upload`, form, {
-          headers: { "Content-Type": "multipart/form-data" },
-        });
-        send(data.url, "audio");
-      } catch (e) {
-        console.warn("Audio upload failed", e);
-      }
-    }
+    return (
+      <View style={{ alignSelf: mine ? "flex-end" : "flex-start" }}>
+        {item.type === "image" ? (
+          <Image source={{ uri: item.content }} style={styles.img} />
+        ) : (
+          <View style={wrap}>
+            <Text style={{ color: mine ? "#fff" : "#000" }}>{item.content}</Text>
+          </View>
+        )}
+        <Text style={styles.time}>
+          {dayjs.unix(item.timestamp).format("HH:mm")}
+        </Text>
+      </View>
+    );
   };
 
+  /* ui --------------------------------------------------------------------- */
   return (
-    <>
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-      >
-        <FlatList
-          ref={listRef}
-          data={messages}
-          keyExtractor={(m) => m.id}
-          renderItem={({ item }) => (
-            <MessageBubble me={user} msg={item} onImage={setFullImg} />
-          )}
-          contentContainerStyle={{ paddingVertical: 8 }}
-          onContentSizeChange={() =>
-            listRef.current?.scrollToEnd({ animated: false })
-          }
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      keyboardVerticalOffset={88}
+    >
+      <FlatList
+        ref={flat}
+        data={list}
+        renderItem={render}
+        keyExtractor={(it, idx) => it.id || String(idx)}
+        contentContainerStyle={{ padding: 12, paddingBottom: 90 }}
+      />
+
+      {/* composer */}
+      <View style={styles.composer}>
+        <TouchableOpacity onPress={pickImage} style={styles.utilBtn}>
+          <MaterialIcons name="photo" size={22} color="#0066CC" />
+        </TouchableOpacity>
+
+        <TextInput
+          style={styles.input}
+          placeholder="Message…"
+          value={text}
+          onChangeText={setText}
+          onSubmitEditing={sendText}
         />
 
-        <View style={styles.inputRow}>
-          <TouchableOpacity onPress={pickImage}>
-            <Ionicons name="image-outline" size={28} color="#0066CC" />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={toggleRec} style={{ marginLeft: 8 }}>
-            <Ionicons
-              name={recording ? "stop-circle" : "mic-outline"}
-              size={28}
-              color={recording ? "red" : "#0066CC"}
-            />
-          </TouchableOpacity>
-
-          <TextInput
-            style={styles.textIn}
-            value={text}
-            onChangeText={setText}
-            placeholder="Message"
-            onSubmitEditing={() => text.trim() && send(text.trim())}
-            returnKeyType="send"
-          />
-
-          <TouchableOpacity
-            onPress={() => text.trim() && send(text.trim())}
-            style={{ marginLeft: 8 }}
-          >
-            <Ionicons name="send" size={26} color="#0066CC" />
-          </TouchableOpacity>
-        </View>
-      </KeyboardAvoidingView>
-
-      <FullImageModal uri={fullImg} onClose={() => setFullImg(null)} />
-    </>
+        <TouchableOpacity onPress={sendText} style={styles.utilBtn}>
+          <Ionicons name="send" size={22} color="#0066CC" />
+        </TouchableOpacity>
+      </View>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  inputRow: {
+  bubble: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 18,
+    maxWidth: "80%",
+    marginBottom: 4,
+  },
+  mine: { backgroundColor: "#0066CC" },
+  theirs: { backgroundColor: "#E4E6EB" },
+  time: { fontSize: 11, color: "#777", marginBottom: 6, alignSelf: "flex-end" },
+  composer: {
     flexDirection: "row",
     alignItems: "center",
-    padding: 6,
     borderTopWidth: 1,
     borderColor: "#eee",
+    padding: 8,
+    backgroundColor: "#fff",
   },
-  textIn: {
+  input: {
     flex: 1,
-    marginHorizontal: 8,
     borderWidth: 1,
     borderColor: "#ccc",
     borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: Platform.OS === "ios" ? 10 : 6,
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+    marginHorizontal: 6,
+  },
+  utilBtn: { padding: 6 },
+  img: {
+    width: 220,
+    height: 220,
+    borderRadius: 12,
+    marginBottom: 4,
   },
 });

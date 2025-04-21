@@ -1,4 +1,5 @@
-import React, { useEffect, useState, useCallback } from "react";
+/* client/screens/ChatListScreen.js */
+import React, { useCallback, useEffect, useState } from "react";
 import {
   View,
   FlatList,
@@ -7,94 +8,98 @@ import {
   StyleSheet,
 } from "react-native";
 import axios from "axios";
+import dayjs from "dayjs";
 import { SERVER_URL } from "../config";
 import AddContactModal from "../components/AddContactModal";
 import SettingsButton from "../components/SettingsButton";
+import { Ionicons } from "@expo/vector-icons";
 
 export default function ChatListScreen({ navigation, route }) {
   const { user } = route.params;
-  const [rooms, setRooms] = useState([]);
-  const [showModal, setShowModal] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [inbox, setInbox] = useState([]);
+  const [showAdd, setShowAdd] = useState(false);
 
-  /* ▸ gear only on this screen */
-  useEffect(() => {
-    navigation.setOptions({
-      title: "Chats",
-      headerRight: () => <SettingsButton navigation={navigation} />,
-    });
-  }, [navigation]);
+  const loadRooms = useCallback(async () => {
+    const { data: people } = await axios.get(`${SERVER_URL}/rooms/${user.id}`);
 
-  /* ▸ fetch rooms + lite polling */
-  const loadRooms = useCallback(() => {
-    setLoading(true);
-    axios
-      .get(`${SERVER_URL}/roomsWithMeta/${user.id}`)
-      .then(({ data }) => setRooms(data))
-      .catch(console.warn)
-      .finally(() => setLoading(false));
+    const enriched = await Promise.all(
+      people.map(async (p) => {
+        const { data: msgs } = await axios.get(
+          `${SERVER_URL}/messages/${user.id}/${p.id}`
+        );
+        const last = msgs[msgs.length - 1];
+        return {
+          ...p,
+          lastLine: last
+            ? (last.sender === user.id ? "You: " : `${p.name}: `) +
+              (last.type === "text" ? last.content.slice(0, 50) : "📷 Photo")
+            : "No messages yet",
+          lastTs: last ? last.timestamp : 0,
+        };
+      })
+    );
+
+    enriched.sort((a, b) => b.lastTs - a.lastTs);
+    setInbox(enriched);
   }, [user.id]);
 
   useEffect(() => {
-    loadRooms();
-    const id = setInterval(loadRooms, 8_000);
-    return () => clearInterval(id);
-  }, [loadRooms]);
+    const unsub = navigation.addListener("focus", loadRooms);
+    return unsub;
+  }, [navigation, loadRooms]);
 
-  /* ▸ render one conversation row */
-  const renderRow = useCallback(
-    ({ item }) => (
-      <TouchableOpacity
-        style={styles.row}
-        onPress={() => navigation.navigate("ChatRoom", { user, room: item })}
-      >
-        <View style={{ flex: 1 }}>
-          <Text style={styles.name}>{item.name}</Text>
-          <Text numberOfLines={1} style={styles.preview}>
-            {item.lastMsg || "Start the conversation…"}
-          </Text>
+  /* header buttons */
+  useEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <View style={{ flexDirection: "row" }}>
+          <TouchableOpacity onPress={() => setShowAdd(true)} style={{ paddingHorizontal: 12 }}>
+            <Ionicons name="person-add" size={22} color="#fff" />
+          </TouchableOpacity>
+          <SettingsButton navigation={navigation} />
         </View>
-        {item.unseen ? <View style={styles.dot} /> : null}
-      </TouchableOpacity>
-    ),
-    [navigation, user]
-  );
+      ),
+    });
+  }, [navigation]);
 
-  if (loading)
-    return (
-      <View style={styles.center}>
-        <Text>Loading…</Text>
+  const row = ({ item }) => (
+    <TouchableOpacity
+      style={styles.row}
+      onPress={() => navigation.navigate("ChatRoom", { user, room: item })}
+    >
+      <View style={{ flex: 1 }}>
+        <Text style={styles.name}>{item.name}</Text>
+        <Text style={styles.preview} numberOfLines={1}>
+          {item.lastLine}
+        </Text>
       </View>
-    );
+      {item.lastTs ? (
+        <Text style={styles.time}>{dayjs.unix(item.lastTs).format("HH:mm")}</Text>
+      ) : null}
+    </TouchableOpacity>
+  );
 
   return (
     <View style={{ flex: 1 }}>
-      {rooms.length ? (
+      {inbox.length ? (
         <FlatList
-          data={rooms}
-          renderItem={renderRow}
+          data={inbox}
+          renderItem={row}
           keyExtractor={(r) => r.id}
         />
       ) : (
-        <View style={styles.center}>
+        <View style={styles.empty}>
           <Text>No conversations yet.</Text>
-          <TouchableOpacity
-            style={styles.addBtn}
-            onPress={() => setShowModal(true)}
-          >
-            <Text style={{ color: "#fff" }}>Add someone</Text>
-          </TouchableOpacity>
         </View>
       )}
 
-      {/* ── modal for searching users  */}
       <AddContactModal
-        visible={showModal}
-        onClose={() => setShowModal(false)}
+        visible={showAdd}
         currentId={user.id}
-        onPicked={(contact) => {
-          setShowModal(false);
-          navigation.navigate("ChatRoom", { user, room: contact });
+        onClose={() => setShowAdd(false)}
+        onPicked={(c) => {
+          setShowAdd(false);
+          navigation.navigate("ChatRoom", { user, room: c });
         }}
       />
     </View>
@@ -105,26 +110,13 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 16,
     paddingVertical: 14,
+    paddingHorizontal: 16,
     borderBottomWidth: 1,
     borderColor: "#eee",
   },
   name: { fontSize: 16, fontWeight: "600" },
-  preview: { fontSize: 13, color: "#777", marginTop: 2 },
-  dot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: "#ff3b30",
-    marginLeft: 8,
-  },
-  center: { flex: 1, justifyContent: "center", alignItems: "center" },
-  addBtn: {
-    marginTop: 16,
-    backgroundColor: "#0066cc",
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 4,
-  },
+  preview: { fontSize: 13, color: "#666", marginTop: 2 },
+  time: { fontSize: 12, color: "#999", marginLeft: 6 },
+  empty: { flex: 1, justifyContent: "center", alignItems: "center" },
 });
