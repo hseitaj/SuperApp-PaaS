@@ -1,10 +1,10 @@
-/* superapp‑paas/server/index.js */
+/* server/index.js */
 require("dotenv").config();
 const express = require("express");
 const http = require("http");
 const bcrypt = require("bcrypt");
 const cors = require("cors");
-const { v4: uuidv4 } = require("uuid");
+const { v4: uuid } = require("uuid");
 const socketIo = require("socket.io");
 const multer = require("multer");
 const path = require("path");
@@ -14,27 +14,29 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-/* ───────────────────── health check ───────────────────── */
+/* health‑check */
 app.get("/", (_, res) => res.send("OK"));
 
-/* ───────────────────── uploads static ─────────────────── */
+/* ---------- static uploads ---------- */
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 const storage = multer.diskStorage({
   destination: (_, __, cb) => cb(null, "uploads"),
-  filename: (_, f, cb) => cb(null, Date.now() + path.extname(f.originalname)),
+  filename: (_, file, cb) =>
+    cb(null, Date.now() + path.extname(file.originalname)),
 });
 const upload = multer({ storage });
 
-/* ───────────────────── auth APIs ──────────────────────── */
+/* ---------- auth ---------- */
 app.post("/signup", async (req, res) => {
   const { username, password } = req.body;
   if (!username || !password)
     return res.status(400).json({ error: "Missing fields" });
 
   const hash = await bcrypt.hash(password, 10);
-  const id = uuidv4();
+  const id = uuid();
+
   db.run(
-    "INSERT INTO users (id, username, password) VALUES (?,?,?)",
+    "INSERT INTO users (id, username, password) VALUES (?, ?, ?)",
     [id, username, hash],
     (err) =>
       err
@@ -54,96 +56,97 @@ app.post("/login", (req, res) => {
     async (err, row) => {
       if (err || !row)
         return res.status(400).json({ error: "Invalid credentials" });
-      if (!(await bcrypt.compare(password, row.password)))
-        return res.status(400).json({ error: "Invalid credentials" });
-      res.json({ id: row.id, username: row.username });
+      const ok = await bcrypt.compare(password, row.password);
+      ok
+        ? res.json({ id: row.id, username: row.username })
+        : res.status(400).json({ error: "Invalid credentials" });
     }
   );
 });
 
-/* ───────────────────── contacts list (all users) ─────── */
-app.get("/rooms/:userId", (req, res) => {
-  const { userId } = req.params;
+/* ---------- contacts & search ---------- */
+app.get("/rooms/:me", (req, res) => {
   db.all(
-    "SELECT id, username AS name FROM users WHERE id <> ?",
-    [userId],
+    "SELECT id, username AS name FROM users WHERE id != ?",
+    [req.params.me],
     (err, rows) =>
       err ? res.status(500).json({ error: err.message }) : res.json(rows)
   );
 });
 
-/* ───────────────────── recent chats (new) ─────────────── */
-/* returns: [{ id, name, lastMsg, ts }] ordered newest‑first */
-app.get("/recent/:userId", (req, res) => {
-  const { userId } = req.params;
+app.get("/search", (req, res) => {
+  const q = `%${(req.query.q || "").toLowerCase()}%`;
   db.all(
-    `
-     SELECT  u.id,
-             u.username AS name,
-             m.content   AS lastMsg,
-             MAX(m.timestamp) AS ts
-       FROM  messages m
-       JOIN  users    u ON (u.id = m.sender OR u.id = m.receiver)
-       WHERE (m.sender = ? OR m.receiver = ?)
-         AND u.id <> ?
-       GROUP BY u.id
-       ORDER BY ts DESC
-    `,
-    [userId, userId, userId],
+    "SELECT id, username FROM users WHERE LOWER(username) LIKE ? LIMIT 20",
+    [q],
     (err, rows) =>
       err ? res.status(500).json({ error: err.message }) : res.json(rows)
   );
 });
 
-/* ───────────────────── message history ───────────────── */
-app.get("/messages/:roomId", (req, res) => {
-  const { roomId } = req.params;
+/* ---------- messages ---------- */
+/* between two people irrespective of direction */
+app.get("/messages/:me/:other", (req, res) => {
+  const { me, other } = req.params;
   db.all(
-    `SELECT id, sender, receiver, content, type, timestamp
-       FROM messages
-      WHERE receiver = ? OR sender = ?
-      ORDER BY timestamp ASC`,
-    [roomId, roomId],
+    `SELECT * FROM messages
+     WHERE (sender = ? AND receiver = ?)
+        OR (sender = ? AND receiver = ?)
+     ORDER BY timestamp ASC`,
+    [me, other, other, me],
     (err, rows) =>
       err ? res.status(500).json({ error: err.message }) : res.json(rows)
   );
 });
 
-/* ───────────────────── file upload ───────────────────── */
-app.post("/upload", upload.single("file"), (req, res) => {
-  if (!req.file) return res.status(400).json({ error: "No file uploaded" });
-  const url = `${req.protocol}://${req.get("host")}/uploads/${
-    req.file.filename
-  }`;
-  res.json({ url });
-});
-
-/* ───────────────────── socket.io ─────────────────────── */
-const server = http.createServer(app);
-const io = socketIo(server, { cors: { origin: "*" } });
-
-io.on("connection", (socket) => {
-  socket.on("join", (room) => socket.join(room));
-
-  socket.on("message", ({ sender, receiver, content, type }) => {
-    const id = uuidv4();
-    const ts = Math.floor(Date.now() / 1000); // unix seconds
-
-    db.run(
-      "INSERT INTO messages (id, sender, receiver, content, type, timestamp) VALUES (?,?,?,?,?,?)",
-      [id, sender, receiver, content, type, ts]
-    );
-
-    io.to(receiver).emit("message", {
+/* generic create (used by REST fallback) */
+app.post("/messages", (req, res) => {
+  const { sender, receiver, content, type, timestamp } = req.body;
+  const id = uuid();
+  db.run(
+    "INSERT INTO messages (id, sender, receiver, content, type, timestamp) VALUES (?,?,?,?,?,?)",
+    [
       id,
       sender,
       receiver,
       content,
       type,
-      timestamp: ts,
-    });
+      timestamp || Math.floor(Date.now() / 1000),
+    ],
+    (err) =>
+      err ? res.status(500).json({ error: err.message }) : res.json({ id })
+  );
+});
+
+/* ---------- uploads ---------- */
+app.post("/upload", upload.single("file"), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: "No file" });
+  res.json({
+    url: `${req.protocol}://${req.get("host")}/uploads/${req.file.filename}`,
+  });
+});
+
+/* ---------- realtime ---------- */
+const server = http.createServer(app);
+const io = socketIo(server, { cors: { origin: "*" } });
+
+io.on("connection", (sock) => {
+  sock.on("join", (uid) => sock.join(uid));
+
+  sock.on("message", (m) => {
+    const id = uuid();
+    const ts = Math.floor(Date.now() / 1000);
+    const row = { ...m, id, timestamp: ts };
+
+    db.run(
+      "INSERT INTO messages (id, sender, receiver, content, type, timestamp) VALUES (?,?,?,?,?,?)",
+      [id, m.sender, m.receiver, m.content, m.type, ts]
+    );
+
+    io.to(m.receiver).emit("message", row);
+    io.to(m.sender).emit("message", row); // echo so sender sees it instantly
   });
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log("Server running on", PORT));
+server.listen(PORT, () => console.log("Server on", PORT));
